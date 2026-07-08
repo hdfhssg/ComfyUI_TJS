@@ -149,6 +149,63 @@ def _sample_custom(
     )
 
 
+def _sample_standard(
+    model,
+    latent,
+    seed,
+    steps,
+    cfg,
+    sampler_name,
+    scheduler,
+    positive,
+    negative,
+    denoise,
+):
+    """Mirror ComfyUI's normal KSampler path for the full-schedule case."""
+    latent_samples = latent["samples"]
+    noise = _prepare_noise(latent, seed)
+    noise_mask = latent.get("noise_mask")
+    callback = latent_preview.prepare_callback(model, steps)
+    disable_pbar = not _progress_enabled()
+
+    try:
+        return comfy.sample.sample(
+            model,
+            noise,
+            steps,
+            cfg,
+            sampler_name,
+            scheduler,
+            positive,
+            negative,
+            latent_samples,
+            denoise=denoise,
+            noise_mask=noise_mask,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+        )
+    except TypeError as exc:
+        if "noise_mask" not in str(exc):
+            raise
+        return comfy.sample.sample(
+            model,
+            noise,
+            steps,
+            cfg,
+            sampler_name,
+            scheduler,
+            positive,
+            negative,
+            latent_samples,
+            denoise=denoise,
+            denoise_mask=noise_mask,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+        )
+
+
 def _callback_x0_to_latent(model, x0_output, fallback_samples):
     if "x0" not in x0_output:
         return fallback_samples
@@ -255,13 +312,39 @@ class TJSSampler:
         denoise=1.0,
     ):
         latent = _fix_latent(model, latent_image)
+
+        gamma = float(early_exit_gamma)
+        if gamma >= 0.999999:
+            samples = _sample_standard(
+                model,
+                latent,
+                seed,
+                total_steps,
+                cfg,
+                sampler_name,
+                scheduler,
+                positive,
+                negative,
+                denoise,
+            )
+            out_x0 = latent.copy()
+            out_x0["samples"] = samples
+            out_xt = latent.copy()
+            out_xt["samples"] = samples
+            print(
+                "[ComfyUI_TJS] "
+                f"K={total_steps} gamma={early_exit_gamma:.3f} "
+                "full-schedule fast path "
+                f"NFE={total_steps} saving=0.0% mode={model_type}"
+            )
+            return (out_x0, out_xt, total_steps, total_steps, 0.0, 0.0)
+
         latent_samples = latent["samples"]
         noise_mask = latent.get("noise_mask")
 
         sigmas = _calculate_sigmas(model, total_steps, sampler_name, scheduler, denoise)
         actual_steps = max(1, int(sigmas.shape[-1]) - 1)
 
-        gamma = float(early_exit_gamma)
         k_star = max(1, math.ceil(gamma * total_steps))
         k_star = min(k_star, actual_steps)
         sigma_star = float(sigmas[k_star].detach().cpu())
