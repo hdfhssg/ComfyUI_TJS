@@ -37,13 +37,13 @@ Endpoint decodability 示意：上排是直接解码中间 noisy latent，早期
 
 <img src="assets/endpoint_decodability.png" alt="Endpoint decodability" width="760">
 
-不同 NFE 下的生成质量变化：
+Z-Image-Turbo 在不同 NFE 下的生成质量变化：
 
-<img src="assets/tjs_low_nfe_gallery.png" alt="TJS low NFE gallery" width="760">
+<img src="assets/z_image_turbo_low_nfe_gallery.png" alt="Z-Image-Turbo low NFE gallery" width="760">
 
-更长步数范围下的 NFE 渐进对比：
+SDXL 30 步采样设置下的 NFE 渐进对比：
 
-<img src="assets/tjs_nfe_progression.png" alt="TJS NFE progression" width="760">
+<img src="assets/sdxl_30step_nfe_progression.png" alt="SDXL 30-step NFE progression" width="760">
 
 FID 与 NFE 的趋势示意：
 

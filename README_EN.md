@@ -45,13 +45,13 @@ endpoint.
 
 <img src="assets/endpoint_decodability.png" alt="Endpoint decodability" width="760">
 
-Generation quality at different NFE budgets:
+Z-Image-Turbo generation quality at different NFE budgets:
 
-<img src="assets/tjs_low_nfe_gallery.png" alt="TJS low NFE gallery" width="760">
+<img src="assets/z_image_turbo_low_nfe_gallery.png" alt="Z-Image-Turbo low NFE gallery" width="760">
 
-Progression across a wider NFE range:
+SDXL 30-step NFE progression:
 
-<img src="assets/tjs_nfe_progression.png" alt="TJS NFE progression" width="760">
+<img src="assets/sdxl_30step_nfe_progression.png" alt="SDXL 30-step NFE progression" width="760">
 
 FID versus NFE trend:
 
