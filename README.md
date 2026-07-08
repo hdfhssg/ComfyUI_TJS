@@ -31,6 +31,24 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 
 当 `gamma = 1.0` 时，节点会运行完整采样 schedule，并跳过额外 endpoint call，等价于普通 KSampler 的边界情况。
 
+## 效果示意
+
+Endpoint decodability 示意：上排是直接解码中间 noisy latent，早期噪声较重；下排是使用 endpoint / denoised 预测得到的干净端点估计。
+
+<img src="assets/endpoint_decodability.png" alt="Endpoint decodability" width="760">
+
+不同 NFE 下的生成质量变化：
+
+<img src="assets/tjs_low_nfe_gallery.png" alt="TJS low NFE gallery" width="760">
+
+更长步数范围下的 NFE 渐进对比：
+
+<img src="assets/tjs_nfe_progression.png" alt="TJS NFE progression" width="760">
+
+FID 与 NFE 的趋势示意：
+
+<img src="assets/fid_vs_nfe_benchmark.png" alt="FID versus NFE benchmark" width="760">
+
 ## 安装
 
 把本文件夹复制到 ComfyUI 的自定义节点目录：

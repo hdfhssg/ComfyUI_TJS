@@ -37,6 +37,26 @@ flow-matching, Flux/SD3-style model wrappers, and related models.
 When `gamma = 1.0`, the node runs the full sampling schedule and skips the
 extra endpoint call, matching the ordinary KSampler boundary case.
 
+## Visual Examples
+
+Endpoint decodability: the top row decodes intermediate noisy latents directly,
+while the bottom row uses endpoint / denoised prediction to estimate the clean
+endpoint.
+
+<img src="assets/endpoint_decodability.png" alt="Endpoint decodability" width="760">
+
+Generation quality at different NFE budgets:
+
+<img src="assets/tjs_low_nfe_gallery.png" alt="TJS low NFE gallery" width="760">
+
+Progression across a wider NFE range:
+
+<img src="assets/tjs_nfe_progression.png" alt="TJS NFE progression" width="760">
+
+FID versus NFE trend:
+
+<img src="assets/fid_vs_nfe_benchmark.png" alt="FID versus NFE benchmark" width="760">
+
 ## Installation
 
 Copy this folder into ComfyUI's custom node directory:
