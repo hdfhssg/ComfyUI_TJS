@@ -7,24 +7,33 @@ ComfyUI_TJS.nodes directly.
 
 try:
     from .tjs_nodes import (
-        NODE_CLASS_MAPPINGS,
-        NODE_DISPLAY_NAME_MAPPINGS,
+        NODE_CLASS_MAPPINGS as _SAMPLER_CLASS,
+        NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
+        TJSAdvancedSampler,
+        TJSCustomAdvanced,
         TJSDecode,
         TJSDecodeManualSigma,
         TJSSampler,
     )
 except ImportError:
     from tjs_nodes import (  # type: ignore
-        NODE_CLASS_MAPPINGS,
-        NODE_DISPLAY_NAME_MAPPINGS,
+        NODE_CLASS_MAPPINGS as _SAMPLER_CLASS,
+        NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
+        TJSAdvancedSampler,
+        TJSCustomAdvanced,
         TJSDecode,
         TJSDecodeManualSigma,
         TJSSampler,
     )
 
+NODE_CLASS_MAPPINGS = {**_SAMPLER_CLASS}
+NODE_DISPLAY_NAME_MAPPINGS = {**_SAMPLER_DISPLAY}
+
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
+    "TJSAdvancedSampler",
+    "TJSCustomAdvanced",
     "TJSDecode",
     "TJSDecodeManualSigma",
     "TJSSampler",

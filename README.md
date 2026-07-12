@@ -31,6 +31,18 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 
 当 `gamma = 1.0` 时，节点会运行完整采样 schedule，并跳过额外 endpoint call，等价于普通 KSampler 的边界情况。
 
+## 更新日志
+
+### 2026-07-13 修复 TJS 速度低于理论值的问题
+
+**问题**：当 `gamma = 1.0`（退出时间设为 1）时，TJS 采样器比原版 KSampler 慢，导致 TJS 加速比例低于理论值。
+
+**根因**：旧实现使用两次独立的采样调用来完成 TJS —— 第一次截断采样到 `sigma[k*]`，第二次单独的 endpoint decode 调用 `sample_custom(sigmas=[sigma*, 0])`。每次调用都经过完整的 ComfyUI 采样管线（创建 CFGGuider、加载模型、准备条件、清理），导致理论上的 NFE = k* + 1 中那个 "+1" 远不止一次前向传播的开销。
+
+**修复**：改为单次采样调用。在截断 sigmas 末尾追加 0：`[sigma_0, ..., sigma_{k*}, 0]`，让采样器在同一次调用中多做一步（sigma* → 0）。通过 k-diffusion 回调在最后一步同时捕获 `denoised`（x0 预测）和 `x`（sigma* 处的状态），消除了第二次采样的全部开销。
+
+修复后 `gamma = 1.0` 时与原版 KSampler 速度完全一致，其他 gamma 值的加速比也更接近理论值。
+
 ## 效果示意
 
 Endpoint decodability 示意：上排是直接解码中间 noisy latent，早期噪声较重；下排是使用 endpoint / denoised 预测得到的干净端点估计。
@@ -63,7 +75,7 @@ ComfyUI/custom_nodes/ComfyUI_TJS/
 
 ### TJS Sampler (Truncated Jump Sampling)
 
-这是主要可用节点，可以作为普通文生图采样器的替代节点使用。
+这是主要的一站式节点，可以作为普通文生图采样器的替代节点使用。
 
 输入：
 
@@ -92,34 +104,79 @@ ComfyUI/custom_nodes/ComfyUI_TJS/
 | `nfe_saving_pct` | 相对完整步数节省的 NFE 百分比 |
 | `sigma_at_exit` | endpoint decode 使用的 sigma |
 
+### TJS Advanced Sampler (KSampler Advanced + Endpoint)
+
+这是 KSampler Advanced 的 TJS 增强版。它在 KSampler Advanced 的基础上内置了
+TJS endpoint decode，无需两节点串联即可实现截断跳步采样。
+
+与 `TJSSampler` 相比，它额外支持：
+
+- `add_noise` = `enable` / `disable`：控制是否添加初始噪声（用于 img2img）。
+- `start_at_step`：从指定步开始采样（用于多阶段工作流）。
+- `noise_seed`：与 KSampler Advanced 一致的种子参数。
+
+输入：
+
+| Input | 中文说明 |
+|---|---|
+| `model` | ComfyUI 加载的模型 |
+| `add_noise` | `enable` 添加噪声（文生图），`disable` 不添加（img2img） |
+| `noise_seed` | 随机种子 |
+| `steps` | 完整采样步数 `K` |
+| `early_exit_gamma` | 早退比例 `gamma` |
+| `cfg` | CFG scale |
+| `sampler_name` | ComfyUI sampler |
+| `scheduler` | ComfyUI scheduler |
+| `positive` / `negative` | 正向/反向条件 |
+| `latent_image` | 空 latent 或输入 latent |
+| `start_at_step` | 起始步（默认 `0`） |
+| `model_type` | 信息标记 |
+
+输出与 `TJSSampler` 相同：`latent_x0`、`latent_xt`、`k_star`、`nfe_used`、`nfe_saving_pct`、`sigma_at_exit`。
+
+### TJS Custom Advanced (SamplerCustomAdvanced + Endpoint)
+
+这是 ComfyUI 自定义采样器（高级）的 TJS 版本，镜像原生 `SamplerCustomAdvanced` 接口，
+额外增加 `early_exit_gamma` 参数。支持所有 ComfyUI guider 类型（CFGGuider、BasicGuider、DualCFGGuider）。
+
+输入与 `SamplerCustomAdvanced` 一致（noise、guider、sampler、sigmas、latent_image），加上 `early_exit_gamma`。
+
+输出：`latent_x0`、`latent_xt`、`k_star`、`nfe_used`、`nfe_saving_pct`、`sigma_at_exit`。
+
 ### TJS Decode (Endpoint / Advanced KSampler)
 
-状态：实验性 / TODO。
+配合 KSampler Advanced 使用的 endpoint decode 节点。先让 KSampler Advanced 跑到某个中间
+`end_at_step`，保留 leftover noisy latent，再用 TJS Decode 把这个中间状态转换成 endpoint `x0` 预测。
 
-这个节点目前还没有完全写对，暂时不要把它当成可靠正式功能。它的目标用法是配合
-KSampler Advanced：先让 KSampler Advanced 跑到某个中间 `end_at_step`，保留 leftover noisy latent，
-再用 TJS Decode 把这个中间状态转换成 endpoint `x0` 预测。
+输入：
 
-后续需要继续修复和验证的问题：
+| Input | 中文说明 |
+|---|---|
+| `model` | ComfyUI 加载的模型 |
+| `latent` | KSampler Advanced 输出的 leftover latent |
+| `steps` | 与 KSampler Advanced 相同的 `steps` |
+| `end_at_step` | 与 KSampler Advanced 相同的 `end_at_step` |
+| `cfg` | CFG scale |
+| `sampler_name` | 与 KSampler Advanced 相同的 sampler |
+| `scheduler` | 与 KSampler Advanced 相同的 scheduler |
+| `positive` / `negative` | 正向/反向条件 |
+| `model_type` | 信息标记 |
+| `seed` | 可选随机种子 |
+| `denoise` | 可选 denoise 强度（应与 KSampler Advanced 一致，默认 `1.0`） |
 
-- 如何严格对齐 KSampler Advanced 的中间 latent 与对应 sigma。
-- 如何保证不同 sampler / scheduler 下 endpoint decode 的输入缩放完全正确。
-- 如何在工作流里可靠传递中间步信息，而不是让用户手动猜连续时间 `t`。
+输出：
 
-当前节点设计为：用户不需要知道连续时间 `t` 或 sigma，只需要填入和 KSampler Advanced 相同的
-`steps`、`sampler_name`、`scheduler`、`end_at_step`，节点内部尝试重建：
+| Output | 中文说明 |
+|---|---|
+| `latent_x0` | endpoint decoded latent |
+| `sigma_at_decode` | decode 使用的 sigma |
+| `decode_step` | 实际 decode 步索引 |
 
-```text
-sigma* = sigmas[end_at_step]
-```
+注意事项：
 
-注意：在 KSampler Advanced 中，需要设置：
-
-```text
-return_with_leftover_noise = enable
-```
-
-如果关闭 leftover noise，高级采样器会强制采到 sigma=0，输出已经是完整去噪 latent，此时就没有可供 TJS decode 的中间 noisy endpoint state。
+- KSampler Advanced 必须设置 `return_with_leftover_noise = enable`。
+- 如果关闭 leftover noise，高级采样器会强制采到 sigma=0，输出已经是完整去噪 latent，此时 TJS Decode 会输出警告并直接返回输入 latent。
+- `steps`、`sampler_name`、`scheduler`、`end_at_step` 必须与 KSampler Advanced 完全一致，否则 sigma 对齐会出错。
 
 ### TJS Decode (Manual Sigma)
 
@@ -152,22 +209,42 @@ NFE = 18 + 1 = 19
 
 相对 30 步完整采样，约节省 `36.7%` NFE。
 
-### 计划中的 Advanced KSampler 用法
+### 使用 TJS Advanced Sampler
 
-这部分仍是 TODO，当前 TJS Decode 节点还需要修复。
+`TJSAdvancedSampler` 是一体化节点，无需串联 KSampler Advanced：
 
-目标工作流如下：
+```text
+steps = 30
+early_exit_gamma = 0.6
+add_noise = enable
+start_at_step = 0
+```
+
+节点会自动计算 `k* = 18`，运行截断采样，然后执行 endpoint decode。
+
+对于 img2img 工作流：
+
+```text
+add_noise = disable
+start_at_step = 0
+```
+
+此时不添加噪声，直接从输入 latent 开始采样。
+
+### 配合 KSampler Advanced 使用 TJS Decode
+
+两节点工作流：
 
 1. 使用 KSampler Advanced。
 2. 设置 `steps = 30`，`end_at_step = 18`。
 3. 设置 `return_with_leftover_noise = enable`。
-4. 把 KSampler Advanced 输出的中间 latent 接到 `TJS Decode (Endpoint / Advanced KSampler)`。
+4. 把 KSampler Advanced 输出的中间 latent 接到 `TJS Decode`。
 5. TJS Decode 使用相同的 `steps`、`end_at_step`、`sampler_name`、`scheduler`。
 6. 把 `latent_x0` 接到 VAE Decode。
 
 ## 当前限制
 
-- `TJS Sampler` 是当前主要实现。
-- `TJS Decode (Endpoint / Advanced KSampler)` 仍是实验节点，需要后续修复。
+- `TJSSampler` 和 `TJSAdvancedSampler` 是当前主要实现。
+- `TJSDecode` 需要与 KSampler Advanced 参数严格对齐才能正确工作。
 - 不同模型、sampler、scheduler 对 latent 缩放和 denoised 语义可能不同，实际效果需要逐模型验证。
 - 当前插件更适合作为算法验证和 ComfyUI 原型实验，不建议直接用于严肃生产流程。
