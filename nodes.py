@@ -11,8 +11,6 @@ try:
         NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
         TJSAdvancedSampler,
         TJSCustomAdvanced,
-        TJSDecode,
-        TJSDecodeManualSigma,
         TJSSampler,
     )
 except ImportError:
@@ -21,8 +19,6 @@ except ImportError:
         NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
         TJSAdvancedSampler,
         TJSCustomAdvanced,
-        TJSDecode,
-        TJSDecodeManualSigma,
         TJSSampler,
     )
 
@@ -34,7 +30,5 @@ __all__ = [
     "NODE_DISPLAY_NAME_MAPPINGS",
     "TJSAdvancedSampler",
     "TJSCustomAdvanced",
-    "TJSDecode",
-    "TJSDecodeManualSigma",
     "TJSSampler",
 ]
