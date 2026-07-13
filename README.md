@@ -44,14 +44,14 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 
 ## 已测试模型
 
-| 模型 | 类型 | 状态 |
-|---|---|---|
-| SDXL | 扩散模型 | 已测试 |
-| SD3.5M | 流匹配模型 | 已测试 |
-| Z-Image-Turbo | 流匹配模型 | 已测试 |
-| Anima | 扩散模型 | 已测试 |
-| Krea2 | 扩散模型 | 已测试 |
-| Krea2-Turbo | 扩散模型 | 已测试 |
+| 模型 | 状态 |
+|---|---|
+| **SDXL** | ✅ 已测试 |
+| **SD3.5M** | ✅ 已测试 |
+| **Z-Image-Turbo** | ✅ 已测试 |
+| **Anima** | ✅ 已测试 |
+| **Krea2** | ✅ 已测试 |
+| **Krea2-Turbo** | ✅ 已测试 |
 
 ### 即将测试
 
