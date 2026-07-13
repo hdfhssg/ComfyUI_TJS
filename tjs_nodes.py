@@ -971,17 +971,277 @@ class TJSCustomAdvanced:
 
 
 # ---------------------------------------------------------------------------
+# TJSCustom  (SamplerCustom + TJS endpoint decode)
+# ---------------------------------------------------------------------------
+
+class TJSCustom:
+    """TJS for the standard "custom sampler" paradigm.
+
+    Mirrors ComfyUI's built-in ``SamplerCustom`` node, but adds TJS early-exit:
+
+      k* = ceil(gamma * (len(sigmas) - 1))
+
+    The node runs ``sample_custom`` with sigmas ``[sigma_0, ..., sigma_{k*}, 0]``
+    — the appended 0 makes the sampler's last step the endpoint decode, and the
+    callback captures both x0 (denoised) and xt (state at sigma*) in a single
+    pass.  This avoids the overhead of a separate endpoint-decode sampling call.
+
+    Inputs are identical to SamplerCustom (model, add_noise, noise_seed, cfg,
+    positive, negative, sampler, sigmas, latent_image) plus ``early_exit_gamma``.
+
+    Workflow::
+
+        BasicScheduler → sigmas
+        KSamplerSelect → sampler
+
+        model + add_noise + noise_seed + cfg + positive + negative
+            + sampler + sigmas + latent_image + early_exit_gamma
+                → TJSCustom
+                    → latent_x0 (endpoint decoded, feed to VAE Decode)
+                    → latent_xt (truncated sampling output)
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "add_noise": (
+                    "BOOLEAN",
+                    {"default": True, "tooltip": "Whether to add noise to the latent."},
+                ),
+                "noise_seed": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xffffffffffffffff,
+                        "control_after_generate": True,
+                    },
+                ),
+                "cfg": (
+                    "FLOAT",
+                    {"default": 8.0, "min": 0.0, "max": 100.0, "step": 0.1, "round": 0.01},
+                ),
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "sampler": ("SAMPLER",),
+                "sigmas": ("SIGMAS",),
+                "latent_image": ("LATENT",),
+                "early_exit_gamma": (
+                    "FLOAT",
+                    {
+                        "default": 0.6,
+                        "min": 0.05,
+                        "max": 1.0,
+                        "step": 0.05,
+                        "display": "slider",
+                        "tooltip": "TJS early-exit ratio. k* = ceil(gamma * steps).",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "LATENT", "INT", "INT", "FLOAT", "FLOAT")
+    RETURN_NAMES = (
+        "latent_x0",
+        "latent_xt",
+        "k_star",
+        "nfe_used",
+        "nfe_saving_pct",
+        "sigma_at_exit",
+    )
+    FUNCTION = "sample"
+    CATEGORY = "sampling/TJS"
+
+    def sample(
+        self,
+        model,
+        add_noise,
+        noise_seed,
+        cfg,
+        positive,
+        negative,
+        sampler,
+        sigmas,
+        latent_image,
+        early_exit_gamma,
+    ):
+        gamma = float(early_exit_gamma)
+
+        latent = latent_image.copy()
+        latent_samples = comfy.sample.fix_empty_latent_channels(
+            model, latent["samples"],
+        )
+        latent["samples"] = latent_samples
+        noise_mask = latent.get("noise_mask")
+
+        # Generate noise.
+        if not add_noise:
+            noise = _zeros_like_noise(latent_samples)
+        else:
+            noise = _prepare_noise(latent, noise_seed)
+
+        # Handle empty sigmas.
+        sigmas_list = sigmas.tolist() if hasattr(sigmas, "tolist") else list(sigmas)
+        if len(sigmas_list) == 0:
+            out = latent.copy()
+            print("[ComfyUI_TJS] Custom: empty sigmas, returning input")
+            return (out, out, 0, 0, 0.0, 0.0)
+
+        total_steps = len(sigmas_list) - 1
+        if total_steps <= 0:
+            out = latent.copy()
+            print("[ComfyUI_TJS] Custom: no steps to run")
+            return (out, out, 0, 0, 0.0, 0.0)
+
+        disable_pbar = not _progress_enabled()
+
+        # ---- Full-schedule fast path (gamma ≈ 1.0) ----------------------
+        if gamma >= 0.999999 or total_steps <= 1:
+            x0_output = {}
+            callback = latent_preview.prepare_callback(
+                model, total_steps, x0_output,
+            )
+            samples = _sample_custom(
+                model, noise, cfg, sampler, sigmas,
+                positive, negative, latent_samples,
+                noise_mask=noise_mask, callback=callback,
+                seed=noise_seed,
+            )
+
+            out_xt = latent.copy()
+            out_xt["samples"] = samples
+
+            if "x0" in x0_output:
+                x0_out = model.model.process_latent_out(
+                    x0_output["x0"].detach().cpu(),
+                )
+                out_x0 = latent.copy()
+                out_x0["samples"] = x0_out
+            else:
+                out_x0 = out_xt
+
+            out_x0.pop("downscale_ratio_spacial", None)
+            out_x0.pop("downscale_ratio_temporal", None)
+            out_xt.pop("downscale_ratio_spacial", None)
+            out_xt.pop("downscale_ratio_temporal", None)
+
+            print(
+                f"[ComfyUI_TJS] Custom: full-schedule "
+                f"K={total_steps} NFE={total_steps}"
+            )
+            return (out_x0, out_xt, total_steps, total_steps, 0.0, 0.0)
+
+        # ---- Compute k* and sigma* --------------------------------------
+        k_star = max(1, math.ceil(gamma * total_steps))
+        k_star = min(k_star, total_steps)
+
+        # If k* reaches the end of the schedule, use the full-schedule path.
+        if k_star >= total_steps:
+            x0_output = {}
+            callback = latent_preview.prepare_callback(
+                model, total_steps, x0_output,
+            )
+            samples = _sample_custom(
+                model, noise, cfg, sampler, sigmas,
+                positive, negative, latent_samples,
+                noise_mask=noise_mask, callback=callback,
+                seed=noise_seed,
+            )
+
+            out_xt = latent.copy()
+            out_xt["samples"] = samples
+
+            if "x0" in x0_output:
+                x0_out = model.model.process_latent_out(
+                    x0_output["x0"].detach().cpu(),
+                )
+                out_x0 = latent.copy()
+                out_x0["samples"] = x0_out
+            else:
+                out_x0 = out_xt
+
+            out_x0.pop("downscale_ratio_spacial", None)
+            out_x0.pop("downscale_ratio_temporal", None)
+            out_xt.pop("downscale_ratio_spacial", None)
+            out_xt.pop("downscale_ratio_temporal", None)
+
+            print(
+                f"[ComfyUI_TJS] Custom: full-schedule "
+                f"K={total_steps} NFE={total_steps}"
+            )
+            return (out_x0, out_xt, total_steps, total_steps, 0.0, 0.0)
+
+        sigma_star = float(sigmas_list[k_star])
+
+        # ---- Single-call TJS (truncated + endpoint decode) -------------
+        # Append 0 to truncated sigmas so the sampler's last step
+        # (sigma* → 0) is the endpoint decode, captured via callback.
+        tjs_sigmas = torch.cat([
+            sigmas[:k_star + 1],
+            torch.zeros(1, dtype=sigmas.dtype, device=sigmas.device),
+        ])
+
+        tjs_steps = k_star + 1
+        x0_output = {}
+        xt_output = {}
+        callback = _make_tjs_callback(
+            model, tjs_steps, tjs_steps - 1, x0_output, xt_output,
+        )
+
+        samples = _sample_custom(
+            model, noise, cfg, sampler, tjs_sigmas,
+            positive, negative, latent_samples,
+            noise_mask=noise_mask, callback=callback,
+            seed=noise_seed,
+        )
+
+        latent_x0 = _callback_x0_to_latent(model, x0_output, samples)
+        if "xt" in xt_output:
+            latent_xt = model.model.process_latent_out(
+                xt_output["xt"].detach().cpu(),
+            )
+        else:
+            latent_xt = samples
+
+        nfe_used = k_star + 1
+        nfe_saving = max(0.0, (1.0 - nfe_used / float(total_steps)) * 100.0)
+
+        out_x0 = latent.copy()
+        out_x0["samples"] = latent_x0
+
+        out_xt = latent.copy()
+        out_xt["samples"] = latent_xt
+
+        out_x0.pop("downscale_ratio_spacial", None)
+        out_x0.pop("downscale_ratio_temporal", None)
+        out_xt.pop("downscale_ratio_spacial", None)
+        out_xt.pop("downscale_ratio_temporal", None)
+
+        print(
+            f"[ComfyUI_TJS] Custom: "
+            f"K={total_steps} gamma={gamma:.3f} "
+            f"k*={k_star} sigma*={sigma_star:.6g} "
+            f"NFE={nfe_used} saving={nfe_saving:.1f}%"
+        )
+        return (out_x0, out_xt, k_star, nfe_used, round(nfe_saving, 1), sigma_star)
+
+
+# ---------------------------------------------------------------------------
 # Node registry
 # ---------------------------------------------------------------------------
 
 NODE_CLASS_MAPPINGS = {
     "TJSSampler": TJSSampler,
     "TJSAdvancedSampler": TJSAdvancedSampler,
+    "TJSCustom": TJSCustom,
     "TJSCustomAdvanced": TJSCustomAdvanced,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TJSSampler": "TJS Sampler (Truncated Jump Sampling)",
     "TJSAdvancedSampler": "TJS Advanced Sampler (KSampler Advanced + Endpoint)",
+    "TJSCustom": "TJS Custom (SamplerCustom + Endpoint)",
     "TJSCustomAdvanced": "TJS Custom Advanced (SamplerCustomAdvanced + Endpoint)",
 }

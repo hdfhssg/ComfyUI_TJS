@@ -10,6 +10,7 @@ try:
         NODE_CLASS_MAPPINGS as _SAMPLER_CLASS,
         NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
         TJSAdvancedSampler,
+        TJSCustom,
         TJSCustomAdvanced,
         TJSSampler,
     )
@@ -18,6 +19,7 @@ except ImportError:
         NODE_CLASS_MAPPINGS as _SAMPLER_CLASS,
         NODE_DISPLAY_NAME_MAPPINGS as _SAMPLER_DISPLAY,
         TJSAdvancedSampler,
+        TJSCustom,
         TJSCustomAdvanced,
         TJSSampler,
     )
@@ -29,6 +31,7 @@ __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
     "TJSAdvancedSampler",
+    "TJSCustom",
     "TJSCustomAdvanced",
     "TJSSampler",
 ]

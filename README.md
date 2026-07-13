@@ -161,6 +161,16 @@ TJS endpoint decode，无需两节点串联即可实现截断跳步采样。
 
 输出与 `TJSSampler` 相同：`latent_x0`、`latent_xt`、`k_star`、`nfe_used`、`nfe_saving_pct`、`sigma_at_exit`。
 
+### TJS Custom (SamplerCustom + Endpoint)
+
+这是 ComfyUI 自定义采样器的 TJS 版本，镜像原生 `SamplerCustom` 接口，额外增加 `early_exit_gamma` 参数。
+
+与 `TJSCustomAdvanced` 的区别：`TJSCustom` 直接接收 `model`、`cfg`、`positive`、`negative` 等参数（内部自动创建 CFGGuider），而 `TJSCustomAdvanced` 需要用户手动连接 guider、noise 对象。`TJSCustom` 更简单易用，`TJSCustomAdvanced` 更灵活。
+
+输入与 `SamplerCustom` 一致（model、add_noise、noise_seed、cfg、positive、negative、sampler、sigmas、latent_image），加上 `early_exit_gamma`。
+
+输出：`latent_x0`、`latent_xt`、`k_star`、`nfe_used`、`nfe_saving_pct`、`sigma_at_exit`。
+
 ### TJS Custom Advanced (SamplerCustomAdvanced + Endpoint)
 
 这是 ComfyUI 自定义采样器（高级）的 TJS 版本，镜像原生 `SamplerCustomAdvanced` 接口，
