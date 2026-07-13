@@ -1,0 +1,8 @@
+# Development and test files
+*.ipynb
+*.json
+!TJS.json
+.gitignore
+.gitattributes
+__pycache__/
+*.pyc

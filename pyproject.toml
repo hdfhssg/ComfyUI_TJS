@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-tjs"
+description = "Truncated Jump Sampling (TJS) - Training-free accelerated generation via endpoint decodability for ComfyUI"
+version = "1.0.0"
+license = { text = "MIT" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/hdfhssg/ComfyUI_TJS"
+
+[tool.comfy]
+PublisherId = "hsfhssg"
+DisplayName = "ComfyUI_TJS - Truncated Jump Sampling"
+Icon = "https://raw.githubusercontent.com/hdfhssg/ComfyUI_TJS/main/assets/endpoint_decodability.png"
