@@ -14,7 +14,16 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v5
-      - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@main
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+          python-version: '3.10'
+      - name: Install comfy-cli
+        shell: bash
+        run: |
+          pip install comfy-cli
+      - name: Publish Node
+        shell: bash
+        run: |
+          comfy --skip-prompt --no-enable-telemetry env
+          comfy node publish --token ${{ secrets.REGISTRY_ACCESS_TOKEN }}
