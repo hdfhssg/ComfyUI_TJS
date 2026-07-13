@@ -216,9 +216,3 @@ start_at_step = 0
 ```
 
 此时不添加噪声，直接从输入 latent 开始采样。
-
-## 当前限制
-
-- `TJSSampler` 和 `TJSAdvancedSampler` 是当前主要实现。
-- 不同模型、sampler、scheduler 对 latent 缩放和 denoised 语义可能不同，实际效果需要逐模型验证。
-- 当前插件更适合作为算法验证和 ComfyUI 原型实验，不建议直接用于严肃生产流程。
