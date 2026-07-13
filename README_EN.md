@@ -8,6 +8,17 @@ ComfyUI_TJS is a custom node plugin for ComfyUI, built to experiment with
 This plugin explores a training-free sampling acceleration idea based on
 endpoint / denoised prediction.
 
+## Paper
+
+```bibtex
+@article{peng2026x,
+  title={x-Prediction Is All You Need: Training-Free Accelerated Generation via Endpoint Decodability},
+  author={Peng, Xin and Gao, Ang},
+  journal={arXiv preprint arXiv:2607.06114},
+  year={2026}
+}
+```
+
 ## What It Does
 
 TJS is based on a simple idea: diffusion and flow-matching samplers may not
@@ -36,6 +47,46 @@ flow-matching, Flux/SD3-style model wrappers, and related models.
 
 When `gamma = 1.0`, the node runs the full sampling schedule and skips the
 extra endpoint call, matching the ordinary KSampler boundary case.
+
+## Tested Models
+
+| Model | Status |
+|---|---|
+| **SDXL** | ✅ Tested |
+| **SD3.5M** | ✅ Tested |
+| **Z-Image-Turbo** | ✅ Tested |
+| **Anima** | ✅ Tested |
+| **Krea2** | ✅ Tested |
+| **Krea2-Turbo** | ✅ Tested |
+
+### Upcoming Tests
+
+- Qwen-Image-Edit-2511
+- Diffusion-based video generation models
+
+## Changelog
+
+### 2026-07-13 Fixed TJS Speed Below Theoretical Value
+
+**Issue**: When `gamma = 1.0` (early exit time set to 1), the TJS sampler was
+slower than the original KSampler, causing TJS acceleration to fall short of
+the theoretical ratio.
+
+**Root cause**: The old implementation used two separate sampling calls to
+complete TJS — first a truncated sampling run to `sigma[k*]`, then a separate
+endpoint decode call `sample_custom(sigmas=[sigma*, 0])`. Each call went through
+the full ComfyUI sampling pipeline (creating CFGGuider, loading model, preparing
+conditions, cleanup), meaning the theoretical NFE = k* + 1's "+1" was far more
+than a single forward pass.
+
+**Fix**: Changed to a single sampling call. By appending 0 to the truncated
+sigmas: `[sigma_0, ..., sigma_{k*}, 0]`, the sampler performs one extra step
+(sigma* -> 0) in the same call. The k-diffusion callback captures both
+`denoised` (x0 prediction) and `x` (state at sigma*) at the last step,
+eliminating all overhead from the second sampling call.
+
+After the fix, `gamma = 1.0` matches the original KSampler speed exactly, and
+acceleration ratios at other gamma values are closer to theoretical.
 
 ## Visual Examples
 
@@ -71,8 +122,8 @@ Then restart ComfyUI.
 
 ### TJS Sampler (Truncated Jump Sampling)
 
-This is the main usable node. It can be used as an experimental replacement for
-a normal text-to-image sampler.
+This is the main one-shot node, usable as a drop-in replacement for the normal
+text-to-image sampler.
 
 Inputs:
 
@@ -101,50 +152,63 @@ Outputs:
 | `nfe_saving_pct` | NFE saving percentage relative to full sampling |
 | `sigma_at_exit` | Sigma used by the endpoint decode |
 
-### TJS Decode (Endpoint / Advanced KSampler)
+### TJS Advanced Sampler (KSampler Advanced + Endpoint)
 
-Status: experimental / TODO.
+This is a TJS-enhanced version of KSampler Advanced. It has TJS endpoint decode
+built in, so there is no need to chain two nodes.
 
-This node is not fully correct yet. Do not treat it as a reliable production
-feature. The intended future workflow is to pair it with KSampler Advanced:
-run KSampler Advanced to an intermediate `end_at_step`, keep the leftover noisy
-latent, then use TJS Decode to convert that intermediate state into an endpoint
-`x0` prediction.
+Compared to `TJSSampler`, it additionally supports:
 
-Open issues to fix:
+- `add_noise` = `enable` / `disable`: controls whether initial noise is added (for img2img).
+- `start_at_step`: start sampling from a specified step (for multi-stage workflows).
+- `noise_seed`: seed parameter consistent with KSampler Advanced.
 
-- Strictly align the KSampler Advanced intermediate latent with the correct sigma.
-- Ensure the input scaling for endpoint decode is correct across samplers and schedulers.
-- Pass intermediate step information reliably through the workflow instead of asking users to guess continuous time `t`.
+Inputs:
 
-The current node attempts to infer:
+| Input | Description |
+|---|---|
+| `model` | Loaded ComfyUI model |
+| `add_noise` | `enable` to add noise (txt2img), `disable` for img2img |
+| `noise_seed` | Random seed |
+| `steps` | Full sampling step budget `K` |
+| `early_exit_gamma` | Early-exit ratio `gamma` |
+| `cfg` | CFG scale |
+| `sampler_name` | ComfyUI sampler |
+| `scheduler` | ComfyUI scheduler |
+| `positive` / `negative` | Positive / negative conditioning |
+| `latent_image` | Empty latent or input latent |
+| `start_at_step` | Start step (default `0`) |
+| `model_type` | Informational selector |
 
-```text
-sigma* = sigmas[end_at_step]
-```
+Outputs: same as `TJSSampler`: `latent_x0`, `latent_xt`, `k_star`, `nfe_used`, `nfe_saving_pct`, `sigma_at_exit`.
 
-from the same `steps`, `sampler_name`, `scheduler`, and `end_at_step` used by
-KSampler Advanced.
+### TJS Custom (SamplerCustom + Endpoint)
 
-Important: in KSampler Advanced, use:
+This is the TJS version of ComfyUI's custom sampler, mirroring the native
+`SamplerCustom` interface with an additional `early_exit_gamma` parameter.
 
-```text
-return_with_leftover_noise = enable
-```
+Difference from `TJSCustomAdvanced`: `TJSCustom` directly takes `model`, `cfg`,
+`positive`, `negative` (internally creates a CFGGuider), while `TJSCustomAdvanced`
+requires manually connecting guider and noise objects. `TJSCustom` is simpler to
+use, `TJSCustomAdvanced` is more flexible.
 
-If leftover noise is disabled, KSampler Advanced forces the final sigma to zero,
-so the output is already fully denoised and there is no intermediate noisy state
-left for TJS Decode.
+Inputs are the same as `SamplerCustom` (model, add_noise, noise_seed, cfg,
+positive, negative, sampler, sigmas, latent_image) plus `early_exit_gamma`.
 
-### TJS Decode (Manual Sigma)
+Outputs: `latent_x0`, `latent_xt`, `k_star`, `nfe_used`, `nfe_saving_pct`, `sigma_at_exit`.
 
-Debug-only node. Use it only when you already know the exact sigma for an
-intermediate latent.
+### TJS Custom Advanced (SamplerCustomAdvanced + Endpoint)
 
-For normal Advanced KSampler workflows, prefer the planned
-`TJS Decode (Endpoint / Advanced KSampler)` workflow after it is fixed.
+This is the TJS version of ComfyUI's custom advanced sampler, mirroring the
+native `SamplerCustomAdvanced` interface with an additional `early_exit_gamma`
+parameter. Supports all ComfyUI guider types (CFGGuider, BasicGuider, DualCFGGuider).
 
-## Example
+Inputs are the same as `SamplerCustomAdvanced` (noise, guider, sampler, sigmas,
+latent_image) plus `early_exit_gamma`.
+
+Outputs: `latent_x0`, `latent_xt`, `k_star`, `nfe_used`, `nfe_saving_pct`, `sigma_at_exit`.
+
+## Usage Examples
 
 ### Direct TJS Sampler Usage
 
@@ -169,23 +233,25 @@ NFE = 18 + 1 = 19
 
 Compared with full 30-step sampling, this saves about `36.7%` NFE.
 
-### Planned Advanced KSampler Workflow
+### Using TJS Advanced Sampler
 
-This part is still TODO because the current TJS Decode node needs further
-repair and validation.
+`TJSAdvancedSampler` is an all-in-one node — no need to chain KSampler Advanced:
 
-Target workflow:
+```text
+steps = 30
+early_exit_gamma = 0.6
+add_noise = enable
+start_at_step = 0
+```
 
-1. Use KSampler Advanced.
-2. Set `steps = 30` and `end_at_step = 18`.
-3. Set `return_with_leftover_noise = enable`.
-4. Feed the intermediate latent into `TJS Decode (Endpoint / Advanced KSampler)`.
-5. Use the same `steps`, `end_at_step`, `sampler_name`, and `scheduler` in TJS Decode.
-6. Connect `latent_x0` to VAE Decode.
+The node automatically computes `k* = 18`, runs truncated sampling, then
+performs endpoint decode.
 
-## Current Limitations
+For img2img workflows:
 
-- `TJS Sampler` is the main implemented path.
-- `TJS Decode (Endpoint / Advanced KSampler)` is still experimental and needs future repair.
-- Latent scaling and `denoised` semantics may differ across models, samplers, and schedulers.
-- This plugin is intended for research prototyping and ComfyUI experiments, not production workflows.
+```text
+add_noise = disable
+start_at_step = 0
+```
+
+No noise is added; sampling starts directly from the input latent.
