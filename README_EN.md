@@ -58,6 +58,7 @@ extra endpoint call, matching the ordinary KSampler boundary case.
 | **Anima** | ✅ Tested |
 | **Krea2** | ✅ Tested |
 | **Krea2-Turbo** | ✅ Tested |
+| **LTX-2B** | ✅ Tested |
 
 ### Upcoming Tests
 

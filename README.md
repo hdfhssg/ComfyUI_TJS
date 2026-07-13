@@ -52,6 +52,7 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 | **Anima** | ✅ 已测试 |
 | **Krea2** | ✅ 已测试 |
 | **Krea2-Turbo** | ✅ 已测试 |
+| **LTX-2B** | ✅ 已测试 |
 
 ### 即将测试
 
