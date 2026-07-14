@@ -60,10 +60,10 @@ extra endpoint call, matching the ordinary KSampler boundary case.
 | **Krea2-Turbo** | ✅ Tested |
 | **LTX-2B** | ✅ Tested |
 | **FLUX.2-Klein-Base-9B (FP8)** | ✅ Tested |
+| **Qwen-Image-Edit-2511 (Q4_K_S)** | ✅ Tested |
 
 ### Upcoming Tests
 
-- Qwen-Image-Edit-2511
 - Diffusion-based video generation models
 
 ## Changelog

@@ -54,10 +54,10 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 | **Krea2-Turbo** | ✅ 已测试 |
 | **LTX-2B** | ✅ 已测试 |
 | **FLUX.2-Klein-Base-9B (FP8)** | ✅ 已测试 |
+| **Qwen-Image-Edit-2511 (Q4_K_S)** | ✅ 已测试 |
 
 ### 即将测试
 
-- Qwen-Image-Edit-2511
 - 扩散类的视频生成模型
 
 ## 更新日志
