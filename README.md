@@ -53,6 +53,7 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 | **Krea2** | ✅ 已测试 |
 | **Krea2-Turbo** | ✅ 已测试 |
 | **LTX-2B** | ✅ 已测试 |
+| **FLUX.2-Klein-Base-9B (FP8)** | ✅ 已测试 |
 
 ### 即将测试
 
