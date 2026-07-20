@@ -66,6 +66,20 @@ extra endpoint call, matching the ordinary KSampler boundary case.
 
 - Diffusion-based video generation models
 
+## Combining with TeaCache (BSS)
+
+TJS can be combined with the [TeaCache (BSS)](https://github.com/BlackSnowSkill/ANIMA_BOOSTER) plugin for further acceleration. The two are complementary: TeaCache reduces attention computation via caching, while TJS reduces sampling steps via trajectory truncation.
+
+Benchmark on the Anima model:
+
+| Configuration | Time |
+|---|---|
+| Original | 8.6s |
+| TeaCache (BSS) + FL sampler | 4.5s |
+| TeaCache (BSS) + TJS sampler | 3.5s |
+
+The TJS sampler result is closer to the original, with total time only 40.7% of the original. See `TJS-TeaCache (BSS).json` for a sample workflow.
+
 ## Changelog
 
 ### 2026-07-13 Fixed TJS Speed Below Theoretical Value
