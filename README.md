@@ -60,9 +60,9 @@ return x0_hat(xt, sigma[k*]) with one endpoint model call
 
 - 扩散类的视频生成模型
 
-## 与 TeaCache (BSS) 组合加速
+## 与其它加速手段组合使用
 
-TJS 可与 [TeaCache (BSS)](https://github.com/BlackSnowSkill/ANIMA_BOOSTER) 插件组合使用，进一步加速采样。两者互补：TeaCache 通过缓存复用减少注意力计算，TJS 通过截断轨迹减少采样步数。
+TJS 可与其它类型的加速手段组合使用，例如 [TeaCache (BSS)](https://github.com/BlackSnowSkill/ANIMA_BOOSTER)，进一步加速采样。两者互补：TeaCache 通过缓存复用减少注意力计算，TJS 通过截断轨迹减少采样步数。
 
 以 Anima 模型为例的实测数据：
 
